@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { UsuariosService } from '../usuarios/usuarios.service';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt'; // opcional si encriptas contraseñas
+import * as bcrypt from 'bcrypt'; // Opcional, solo si estás encriptando contraseñas
 
 @Injectable()
 export class AuthService {
@@ -18,6 +18,7 @@ export class AuthService {
     const match = await bcrypt.compare(password, user.password);
     if (!match) throw new UnauthorizedException('Contraseña incorrecta');
 
+    // Asegúrate de que 'user' sea del tipo 'UsuarioDocument' para usar 'toObject()'
     const { password: _, ...result } = user.toObject();
     return result;
   }
@@ -30,7 +31,7 @@ export class AuthService {
   }
 
   async register(data: any) {
-    // puedes encriptar la contraseña aquí
+    // Encriptar la contraseña antes de guardarla
     data.password = await bcrypt.hash(data.password, 10);
     return this.usuariosService.create(data);
   }

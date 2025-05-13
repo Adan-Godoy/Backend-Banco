@@ -1,19 +1,28 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+// src/usuarios/schemas/usuario.schema.ts
 
-@Schema()
-export class Usuario extends Document {
-  @Prop({ required: true, unique: true })
-  rut: string;
+import { Schema, Document, Types } from 'mongoose';
 
-  @Prop({ required: true })
-  nombre: string;
-
-  @Prop({ required: true, unique: true })
-  email: string;
-
-  @Prop({ required: true })
-  password: string;
+// Interfaz
+export interface Usuario extends Document {
+  readonly rut: string;
+  readonly nombre: string;
+  readonly email: string;
+  readonly password: string;
 }
 
-export const UsuarioSchema = SchemaFactory.createForClass(Usuario);
+// Tipo adicional para usar con Mongoose
+export type UsuarioDocument = Document & {
+  _id: Types.ObjectId;
+  rut: string;
+  nombre: string;
+  email: string;
+  password: string;
+};
+
+// Esquema de Mongoose
+export const UsuarioSchema = new Schema({
+  rut: { type: String, required: true, unique: true },
+  nombre: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+});
