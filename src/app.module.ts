@@ -4,13 +4,14 @@ import { AppService } from './app.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsuarioSchema } from './usuarios/schemas/usuario.schema';
 import { TransaccionSchema } from './schemas/transaccion.schema';
-import { DestinatarioSchema } from './schemas/destinatario.schema';
+import { DestinatarioSchema } from './destinatarios/schemas/destinatario.schema';
 import { UsuariosService } from './usuarios/usuarios.service';
 import { UsuariosController } from './usuarios/usuarios.controller';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { AuthModule } from './auth/auth.module';  // Importa AuthModule
 import { CuentasModule } from './cuentas/cuentas.module';
 import { TarjetaModule } from './tarjetas/tarjeta.module';
+import { DestinatarioModule } from './destinatarios/destinatario.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { TarjetaModule } from './tarjetas/tarjeta.module';
     AuthModule,
     CuentasModule,
     TarjetaModule,
+    DestinatarioModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -10,6 +10,6 @@ import { CuentasController } from './cuentas.controller';
   ],
   providers: [CuentasService],
   controllers: [CuentasController],
-  exports: [CuentasService],
+  exports: [CuentasService, MongooseModule],
 })
 export class CuentasModule {}
