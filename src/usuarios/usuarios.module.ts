@@ -10,7 +10,7 @@ import { CuentasModule } from 'src/cuentas/cuentas.module';
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: 'Usuario', schema: UsuarioSchema }]), // 'Usuario' como string
-    CuentasModule,
+    
   ],
   controllers: [UsuariosController],
   providers: [UsuariosService],
