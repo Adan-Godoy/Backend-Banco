@@ -1,4 +1,4 @@
-// src/app.module.ts (MODIFICADO Y REORDENADO)
+// src/app.module.ts (VERSIÓN FINAL Y LIMPIA)
 
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -13,23 +13,23 @@ import { AuthModule } from './auth/auth.module';
 import { CuentasModule } from './cuentas/cuentas.module';
 import { TarjetaModule } from './tarjetas/tarjeta.module';
 import { DestinatarioModule } from './destinatarios/destinatario.module';
+import { TransaccionesModule } from './transacciones/transacciones.module'; // Importante
 import { Neo4jModule } from './neo4j/neo4j.module';
 import { FraudeModule } from './fraude/fraude.module';
 
-// Schemas que no pertenecen a un módulo específico (si los tienes)
-import { TransaccionSchema } from './schemas/transaccion.schema';
-import { DestinatarioSchema } from './destinatarios/schemas/destinatario.schema';
-
+// <<<< ELIMINA LAS IMPORTACIONES DE SCHEMAS INDIVIDUALES >>>>
+// import { TransaccionSchema } from './transacciones/schemas/transaccion.schema';
+// import { DestinatarioSchema } from './destinatarios/schemas/destinatario.schema';
 
 
 @Module({
   imports: [
-    // 1. Cargar Configuración primero y de forma global
+    // 1. Cargar Configuración
     ConfigModule.forRoot({
-      isGlobal: true, // Esto es clave
+      isGlobal: true,
     }),
 
-    // 2. Configurar Mongoose de forma asíncrona para usar ConfigService
+    // 2. Configurar Conexión a Mongoose
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -38,24 +38,24 @@ import { DestinatarioSchema } from './destinatarios/schemas/destinatario.schema'
       }),
     }),
 
-    // 3. Módulos que registran sus propios schemas
+    // 3. Importar todos los Módulos de la Aplicación
+    // Cada módulo es responsable de sus propios schemas y dependencias.
     UsuariosModule,
     AuthModule,
     CuentasModule,
     TarjetaModule,
     DestinatarioModule,
+    TransaccionesModule, // El AppModule solo necesita saber que este módulo existe
     Neo4jModule,
     FraudeModule,
 
-    // 4. Registrar schemas "globales" si es necesario.
-    // NOTA: Es mejor práctica que cada schema viva dentro de su propio módulo.
-    // Por ejemplo, TransaccionSchema debería estar en un TransaccionesModule.
-    // Pero si los quieres aquí, esta es la forma.
+    // <<<< ELIMINA ESTA SECCIÓN POR COMPLETO >>>>
+    /*
     MongooseModule.forFeature([
       { name: 'Transaccion', schema: TransaccionSchema },
-      // El schema de Destinatario ya debería estar en DestinatarioModule, esto puede ser redundante.
       { name: 'Destinatario', schema: DestinatarioSchema },
     ]),
+    */
   ],
   controllers: [AppController],
   providers: [AppService],

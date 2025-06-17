@@ -1,18 +1,25 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Request, UseGuards, Body, Param } from '@nestjs/common';
 import { TarjetaService } from './tarjeta.service';
-import { CreateTarjetaDto } from './dto/create-tarjeta.dto';
+import { AuthGuard } from '@nestjs/passport';
 
 @Controller('tarjetas')
+@UseGuards(AuthGuard('jwt'))
 export class TarjetaController {
   constructor(private readonly tarjetaService: TarjetaService) {}
 
+  // << MODIFICADO >>
   @Post()
-  create(@Body() dto: CreateTarjetaDto) {
-    return this.tarjetaService.create(dto);
+  create(@Request() req) {
+    // Ya no hay un body. Toda la info viene del token.
+    const usuarioId = req.user.userId;
+    const usuarioRut = req.user.rut;
+    return this.tarjetaService.create(usuarioId, usuarioRut);
   }
 
   @Get(':usuario_id')
   getByUsuario(@Param('usuario_id') usuario_id: string) {
     return this.tarjetaService.findByUsuario(usuario_id);
   }
+
+  
 }

@@ -53,8 +53,10 @@ export class AuthService {
     // 3. Crear las dos cuentas para el nuevo usuario
     // SOLUCIÓN: Convertimos el _id a string para asegurar el tipo correcto.
     const userId = (newUserDocument as UsuarioDocument)._id;
-    await this.cuentasService.crearCuentasParaNuevoUsuario(userId);
-
+    await this.cuentasService.crearCuentasParaNuevoUsuario(
+      (newUserDocument as UsuarioDocument)._id,
+      newUserDocument.rut,
+    );
     // 4. Crear el nodo en Neo4j en segundo plano
     this.fraudeService.crearNodoUsuario({ rut: newUserDocument.rut });
 

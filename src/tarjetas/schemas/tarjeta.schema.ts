@@ -3,6 +3,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
+// <<<< AÑADIR ESTA LÍNEA >>>>
+export type TarjetaDocument = Tarjeta & Document;
+
 @Schema({ timestamps: true })
 export class Tarjeta extends Document {
   @Prop({ type: Types.ObjectId, ref: 'Usuario', required: true })

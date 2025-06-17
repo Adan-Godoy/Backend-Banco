@@ -1,73 +1,79 @@
+// src/cuentas/cuentas.service.ts
+
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
-import { Model, Types, Connection } from 'mongoose';
-import { Cuenta, CuentaDocument } from './schemas/cuenta.schema'; // Importa también CuentaDocument
+import { Model, Types, Connection, ClientSession } from 'mongoose';
+import { Cuenta, CuentaDocument } from './schemas/cuenta.schema';
 import { CreateCuentaDto } from './dto/create-cuenta.dto';
 import { TransferenciaInternaDto } from './dto/transferencia-interna.dto';
+import { FraudeService } from '../fraude/fraude.service'; 
+import { CuentaConUsuarioPopulado } from './interfaces/cuenta-populada.interface';
 
 @Injectable()
 export class CuentasService {
   private readonly logger = new Logger(CuentasService.name);
 
   constructor(
-    @InjectModel(Cuenta.name) private readonly cuentaModel: Model<CuentaDocument>, // Usar CuentaDocument para mejor tipado
+    @InjectModel(Cuenta.name) private readonly cuentaModel: Model<CuentaDocument>,
     @InjectConnection() private readonly connection: Connection,
+    private readonly fraudeService: FraudeService,
   ) {}
 
+  // ... (otros métodos que ya funcionaban)
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { name: 'generar_intereses' })
   async handleGenerarIntereses() {
     this.logger.log('Iniciando tarea programada: Generar Intereses...');
-    
-    const tasaInteres = 0.001; // 0.1% de interés diario (ejemplo)
-
+    const tasaInteres = 0.001;
     const resultado = await this.cuentaModel.updateMany(
       { tipo: 'ahorro', saldo: { $gt: 0 } },
       [ { $set: { saldo: { $round: [ { $multiply: ['$saldo', 1 + tasaInteres] }, 2 ] } } } ]
     );
-    
     this.logger.log(`Tarea completada. Cuentas de ahorro actualizadas: ${resultado.modifiedCount}`);
   }
 
-  async crearCuentasParaNuevoUsuario(usuarioId: string | Types.ObjectId): Promise<void> {
+  async crearCuentasParaNuevoUsuario(usuarioId: Types.ObjectId, rutUsuario: string): Promise<void> {
     const cuentaPrincipalData: CreateCuentaDto = {
-      usuario_id: usuarioId, // Se pasa el ObjectId directamente, esto está bien
+      usuario_id: usuarioId,
       tipo: 'principal',
-      saldo: 0,
+      rut_usuario: rutUsuario,
     };
-
     const cuentaAhorroData: CreateCuentaDto = {
       usuario_id: usuarioId,
       tipo: 'ahorro',
-      saldo: 0,
+      rut_usuario: rutUsuario,
     };
-
     await this.create(cuentaPrincipalData);
     await this.create(cuentaAhorroData);
   }
 
   async create(data: CreateCuentaDto): Promise<CuentaDocument> {
-    const nuevaCuenta = new this.cuentaModel(data);
-    return nuevaCuenta.save();
+    const rutSinPuntosGuion = data.rut_usuario.replace(/[.-]/g, '');
+    const sufijo = data.tipo === 'principal' ? '0' : '1';
+    const numero_cuenta = `${rutSinPuntosGuion}-${sufijo}`;
+    const datosCompletos = {
+      usuario_id: data.usuario_id,
+      tipo: data.tipo,
+      saldo: data.saldo || 0,
+      numero_cuenta,
+    };
+    const nuevaCuenta = new this.cuentaModel(datosCompletos);
+    const cuentaGuardada = await nuevaCuenta.save();
+    this.fraudeService.crearNodoCuenta({
+      usuarioRut: data.rut_usuario,
+      numeroCuenta: cuentaGuardada.numero_cuenta,
+      tipoCuenta: cuentaGuardada.tipo,
+    });
+    return cuentaGuardada;
   }
 
   async findByUsuario(usuario_id: string): Promise<CuentaDocument[]> {
-    this.logger.log(`[DEBUG] Buscando cuentas para usuario_id (string): ${usuario_id}`);
-    
-    // **CORRECCIÓN #1: Convertir explícitamente a ObjectId**
     const usuarioObjectId = new Types.ObjectId(usuario_id);
-    this.logger.log(`[DEBUG] Buscando con ObjectId: ${usuarioObjectId}`);
-    
     return this.cuentaModel.find({ usuario_id: usuarioObjectId }).exec();
   }
 
   async getSaldoYMovimientos(usuario_id: string): Promise<CuentaDocument[]> {
-    this.logger.log(`[DEBUG] Obteniendo saldo y movimientos para usuario_id (string): ${usuario_id}`);
-    
-    // **CORRECCIÓN #2: Convertir explícitamente a ObjectId aquí también**
     const usuarioObjectId = new Types.ObjectId(usuario_id);
-    this.logger.log(`[DEBUG] Buscando con ObjectId: ${usuarioObjectId}`);
-
     return this.cuentaModel
       .find({ usuario_id: usuarioObjectId })
       .select('tipo saldo')
@@ -76,56 +82,92 @@ export class CuentasService {
 
   async transferirEntreCuentasPropias(usuarioId: string, dto: TransferenciaInternaDto): Promise<{ message: string }> {
     const { monto, cuentaOrigenId, cuentaDestinoId } = dto;
-
     if (monto <= 0) {
       throw new BadRequestException('El monto debe ser positivo.');
     }
-
-    // **CORRECCIÓN #3: Convertir explícitamente a ObjectId para las transacciones**
     const usuarioObjectId = new Types.ObjectId(usuarioId);
-
     const session = await this.connection.startSession();
     session.startTransaction();
-
     try {
-      this.logger.log(`[TRANSACCIÓN] Intentando debitar ${monto} de la cuenta ${cuentaOrigenId} para el usuario ${usuarioObjectId}`);
-      
       const cuentaOrigen = await this.cuentaModel.findOneAndUpdate(
-        // Usar el ObjectId en la consulta
         { _id: cuentaOrigenId, usuario_id: usuarioObjectId, saldo: { $gte: monto } },
         { $inc: { saldo: -monto } },
         { session, new: true }
       );
-
       if (!cuentaOrigen) {
         throw new BadRequestException('Fondos insuficientes o la cuenta de origen no pertenece al usuario.');
       }
-      
-      this.logger.log(`[TRANSACCIÓN] Débito exitoso. Acreditando a la cuenta ${cuentaDestinoId}`);
-
       const cuentaDestino = await this.cuentaModel.findOneAndUpdate(
-        // Usar el ObjectId en la consulta
         { _id: cuentaDestinoId, usuario_id: usuarioObjectId },
         { $inc: { saldo: monto } },
         { session, new: true }
       );
-
       if (!cuentaDestino) {
-        // Esto solo ocurriría si la cuenta de destino no existe o no pertenece al usuario
         throw new NotFoundException('La cuenta de destino no pertenece al usuario.');
       }
-
       await session.commitTransaction();
-      this.logger.log(`[TRANSACCIÓN] Commit exitoso.`);
       return { message: 'Transferencia interna realizada con éxito.' };
-
     } catch (error) {
       await session.abortTransaction();
       this.logger.error('Fallo la transferencia interna, realizando rollback:', error.stack);
-      // Re-lanzar el error para que el cliente reciba la respuesta adecuada
       throw new BadRequestException(error.message || 'No se pudo completar la transferencia.');
     } finally {
       session.endSession();
+    }
+  }
+
+  async findCuentaPrincipalByUsuarioId(usuarioId: string | Types.ObjectId): Promise<CuentaConUsuarioPopulado | null> {
+    const usuarioObjectId = typeof usuarioId === 'string' 
+      ? new Types.ObjectId(usuarioId) 
+      : usuarioId;
+    
+    // CORRECCIÓN: Le decimos a Mongoose que seleccione '_id' y 'rut'.
+    // Y le indicamos a TypeScript la forma exacta del objeto populado.
+    return this.cuentaModel
+      .findOne({ usuario_id: usuarioObjectId, tipo: 'principal' })
+      .populate<{ usuario_id: { _id: Types.ObjectId; rut: string } }>('usuario_id', '_id rut')
+      .exec();
+  }
+
+  async findCuentaByNumero(numeroCuenta: string): Promise<CuentaConUsuarioPopulado | null> {
+    // CORRECCIÓN: Aplicamos la misma lógica aquí.
+    return this.cuentaModel
+      .findOne({ numero_cuenta: numeroCuenta })
+      .populate<{ usuario_id: { _id: Types.ObjectId; rut: string } }>('usuario_id', '_id rut')
+      .exec();
+  }
+
+  // ... (resto de los métodos auxiliares sin cambios)
+  async debitar(cuentaId: string | Types.ObjectId, monto: number, session: ClientSession): Promise<void> {
+    const resultado = await this.cuentaModel.updateOne(
+      { _id: cuentaId, saldo: { $gte: monto } },
+      { $inc: { saldo: -monto } },
+      { session }
+    );
+    if (resultado.modifiedCount === 0) {
+      throw new BadRequestException('Fondos insuficientes.');
+    }
+  }
+
+  async acreditar(cuentaId: string | Types.ObjectId, monto: number, session: ClientSession): Promise<void> {
+    await this.cuentaModel.updateOne(
+      { _id: cuentaId },
+      { $inc: { saldo: monto } },
+      { session }
+    );
+  }
+
+  async findCuentaById(cuentaId: string | Types.ObjectId): Promise<CuentaDocument | null> {
+    return this.cuentaModel.findById(cuentaId).exec();
+  }
+  
+  async debitarSinSesion(cuentaId: string | Types.ObjectId, monto: number): Promise<void> {
+    const resultado = await this.cuentaModel.updateOne(
+      { _id: cuentaId, saldo: { $gte: monto } },
+      { $inc: { saldo: -monto } }
+    );
+    if (resultado.modifiedCount === 0) {
+      throw new BadRequestException('Fondos insuficientes al momento de procesar el débito.');
     }
   }
 }
